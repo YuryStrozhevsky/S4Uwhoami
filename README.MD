@@ -1,7 +1,7 @@
 # Basic Information
 The project _S4Uwhoami_ is a simple project which intended to show a way how to use S4U2Self in Windows for gathering information about all users in the domain. In order to do this the only function needed is _LsaLogonUser_.
 
-# How To User
+# How To Use
 Just enter name of a any user or computer (without $ at the end).
 ```console
 C:\> S4Uwhoami.exe Administrator
