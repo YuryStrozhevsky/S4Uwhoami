@@ -2,6 +2,8 @@
 
 #include <iostream>
 #include <format>
+#include <regex>
+#include <string>
 
 #include <NTSecAPI.h>
 //***************************************************************************************
@@ -228,7 +230,11 @@ void whoami(std::wstring_view TargetName)
     #pragma endregion
 
     #pragma region Store full information about the token into XML
-    XSEC::XSave(token, std::format(L"{}_token.xml", TargetName));
+    std::wstring strTargetName = TargetName.data();
+    std::replace(strTargetName.begin(), strTargetName.end(), L'\\', L'_');
+    std::replace(strTargetName.begin(), strTargetName.end(), L'/', L'_');
+
+    XSEC::XSave(token, std::format(L"{}_token.xml", strTargetName));
     #pragma endregion
 }
 //***************************************************************************************

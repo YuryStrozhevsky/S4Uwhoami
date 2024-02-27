@@ -1,8 +1,8 @@
 # Basic Information
-The project _S4Uwhoami_ is a simple project which intended to show a way how to use S4U2Self in Windows for gathering information about any user or machine in the domain. In order to do this the only function needed is _LsaLogonUser_.
+The project _S4Uwhoami_ is a simple project which intended to show a way how to use S4U2Self in Windows for gathering information about any user, machine or service in the domain. In order to do this the only function needed is _LsaLogonUser_.
 
 # How To Use
-Just enter name of a any user or computer (without $ at the end).
+Just enter name of a any user, computer (without $ at the end) or service.
 ```console
 C:\> S4Uwhoami.exe Administrator
 
@@ -56,6 +56,39 @@ SeIncreaseWorkingSetPrivilege             Increase a process working set
 SeTimeZonePrivilege                       Change the time zone
 SeCreateSymbolicLinkPrivilege             Create symbolic links
 SeDelegateSessionUserImpersonatePrivilege Obtain an impersonation token for another user in the same session
+```
+
+How to request data for service name:
+```console
+C:> S4Uwhoami.exe ldap/wserver.wdomain.lan
+
+User:
+=====
+WDOMAIN\WSERVER$	S-1-5-21-4188712652-911564600-2864056775-1000
+
+Groups:
+=======
+WDOMAIN\Domain Controllers                     S-1-5-21-4188712652-911564600-2864056775-516
+Everyone                                       S-1-1-0
+BUILTIN\Users                                  S-1-5-32-545
+NT AUTHORITY\NETWORK                           S-1-5-2
+NT AUTHORITY\Authenticated Users               S-1-5-11
+NT AUTHORITY\This Organization                 S-1-5-15
+NT AUTHORITY\LogonSessionId_0_15593971         S-1-5-5-0-15593971
+NT AUTHORITY\ENTERPRISE DOMAIN CONTROLLERS     S-1-5-9
+Service asserted identity                      S-1-18-2
+WDOMAIN\Denied RODC Password Replication Group S-1-5-21-4188712652-911564600-2864056775-572
+WDOMAIN\Cert Publishers                        S-1-5-21-4188712652-911564600-2864056775-517
+Mandatory Label\Medium Plus Mandatory Level    S-1-16-8448
+
+Privileges:
+===========
+SeShutdownPrivilege           Shut down the system
+SeChangeNotifyPrivilege       Bypass traverse checking
+SeUndockPrivilege             Remove computer from docking station
+SeIncreaseWorkingSetPrivilege Increase a process working set
+SeTimeZonePrivilege           Change the time zone
+UNKNOWN ERROR DURING EXECUTION
 
 ```
 Also as a result in the current directory will be new file with name "<user_name>_token.xml". The format of the file is defined in my [**other project**](https://github.com/YuryStrozhevsky/XSEC).
