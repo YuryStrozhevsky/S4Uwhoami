@@ -1,11 +1,15 @@
 #include "./XSEC/index.h"
+#include "./XKERB/index.h"
 
 #include <iostream>
 #include <format>
 #include <regex>
 #include <string>
+#include <filesystem>
 
 #include <NTSecAPI.h>
+
+#pragma comment(lib, "Crypt32.lib")
 //***************************************************************************************
 std::string status_to_string(std::string_view function, NTSTATUS status)
 {
@@ -15,7 +19,13 @@ std::string status_to_string(std::string_view function, NTSTATUS status)
     return stream.str();
 }
 //***************************************************************************************
-void whoami(std::wstring_view TargetName)
+struct parameters {
+    std::optional<std::wstring> user_name = std::nullopt;
+    std::optional<std::wstring> domain_name = std::nullopt;
+    std::optional<std::wstring> file_name = std::nullopt;
+};
+//***************************************************************************************
+void whoami_x509(parameters params)
 {
     #pragma region Initial variables
     HANDLE LogonHandle;
@@ -42,23 +52,87 @@ void whoami(std::wstring_view TargetName)
     std::string origin_name = "Something";
     LSA_STRING OriginName = { origin_name.size(), origin_name.size(), origin_name.data() };
 
-    auto TargetNameByteLength = TargetName.size() * sizeof(wchar_t);
+    unsigned long long TargetNameByteLength = 0;
+    unsigned long long DomainNameByteLength = 0;
+    unsigned long long CertificateLength = 0;
+    unsigned long long OverallLength = sizeof(KERB_CERTIFICATE_S4U_LOGON);
+    unsigned long long CurrentLength = sizeof(KERB_CERTIFICATE_S4U_LOGON);
+
+    std::vector<unsigned char> Certificate;
     #pragma endregion
 
-    #pragma region Request using user name only (without a password)
-    std::unique_ptr<unsigned char[]> RawCacheRequest{ new unsigned char[TargetNameByteLength + sizeof(KERB_S4U_LOGON)]() };
+    #pragma region Request input parameters
+    if(params.user_name != std::nullopt)
+    {
+        TargetNameByteLength = params.user_name.value().size() * sizeof(wchar_t);
+        OverallLength += TargetNameByteLength;
+    }
+
+    if(params.domain_name != std::nullopt)
+    {
+        DomainNameByteLength = params.domain_name.value().size() * sizeof(wchar_t);
+        OverallLength += DomainNameByteLength;
+    }
+
+    if(params.file_name != std::nullopt)
+    {
+        std::ifstream stream(std::filesystem::path{ params.file_name.value() }, std::ios::in | std::ios::binary | std::ios::ate);
+        if(stream.is_open() == false)
+        {
+            std::wcout << "Unable to open file: " << params.file_name.value() << std::endl;
+            return;
+        }
+
+        auto size = stream.tellg();
+        std::vector<unsigned char> data(size);
+
+        Certificate.resize(size);
+
+        stream.seekg(0);
+        stream.read((char*)Certificate.data(), size);
+
+        CertificateLength = size;
+        OverallLength += CertificateLength;
+    }
+
+    std::unique_ptr<unsigned char[]> RawCacheRequest{ new unsigned char[OverallLength]() };
     if(!RawCacheRequest)
         throw std::exception("Out of memory");
 
-    PKERB_S4U_LOGON CacheRequest = reinterpret_cast<PKERB_S4U_LOGON>(RawCacheRequest.get());
+    PKERB_CERTIFICATE_S4U_LOGON CacheRequest = reinterpret_cast<PKERB_CERTIFICATE_S4U_LOGON>(RawCacheRequest.get());
 
-    CacheRequest->MessageType = KerbS4ULogon;
+    CacheRequest->MessageType = KerbCertificateS4ULogon;
     CacheRequest->Flags = 0;
-    CacheRequest->ClientUpn.Length = TargetNameByteLength;
-    CacheRequest->ClientUpn.MaximumLength = TargetNameByteLength;
-    CacheRequest->ClientUpn.Buffer = (PWSTR)(CacheRequest + 1);
 
-    std::copy((byte*)TargetName.data(), (byte*)TargetName.data() + TargetNameByteLength, (byte*)CacheRequest->ClientUpn.Buffer);
+    if(params.user_name != std::nullopt)
+    {
+        CacheRequest->UserPrincipalName.Length = TargetNameByteLength;
+        CacheRequest->UserPrincipalName.MaximumLength = TargetNameByteLength;
+        CacheRequest->UserPrincipalName.Buffer = (PWSTR)((byte*)CacheRequest + CurrentLength);
+
+        std::copy((byte*)params.user_name.value().data(), (byte*)params.user_name.value().data() + TargetNameByteLength, (byte*)CacheRequest->UserPrincipalName.Buffer);
+
+        CurrentLength += TargetNameByteLength;
+    }
+
+    if(params.domain_name != std::nullopt)
+    {
+        CacheRequest->DomainName.Length = DomainNameByteLength;
+        CacheRequest->DomainName.MaximumLength = DomainNameByteLength;
+        CacheRequest->DomainName.Buffer = (PWSTR)((byte*)CacheRequest + CurrentLength);
+
+        std::copy((byte*)params.domain_name.value().data(), (byte*)params.domain_name.value().data() + DomainNameByteLength, (byte*)CacheRequest->DomainName.Buffer);
+
+        CurrentLength += DomainNameByteLength;
+    }
+
+    if(params.file_name != std::nullopt)
+    {
+        CacheRequest->CertificateLength = CertificateLength;
+        CacheRequest->Certificate = (PUCHAR)((byte*)CacheRequest + CurrentLength);
+
+        std::copy(Certificate.begin(), Certificate.end(), (byte*)CacheRequest->Certificate);
+    }
     #pragma endregion
 
     #pragma region Send the request to LSA and get access token
@@ -75,7 +149,7 @@ void whoami(std::wstring_view TargetName)
         Network,
         PackageId,
         CacheRequest,
-        TargetNameByteLength + sizeof(KERB_S4U_LOGON),
+        OverallLength,
         nullptr,
         &TokenSource,
         &ProfileBuffer,
@@ -230,12 +304,25 @@ void whoami(std::wstring_view TargetName)
     #pragma endregion
 
     #pragma region Store full information about the token into XML
-    std::wstring strTargetName = TargetName.data();
+    std::wstring strTargetName;
+    if(params.user_name != std::nullopt)
+        strTargetName = params.user_name.value().data();
+    else
+        strTargetName = std::filesystem::path{ params.file_name.value() }.filename().wstring().data();
+
     std::replace(strTargetName.begin(), strTargetName.end(), L'\\', L'_');
     std::replace(strTargetName.begin(), strTargetName.end(), L'/', L'_');
 
     XSEC::XSave(token, std::format(L"{}_token.xml", strTargetName));
     #pragma endregion
+}
+//***************************************************************************************
+void usage()
+{
+    std::cout << "S4UWhoami (c) 2024-2025, Yury Strozhevsky" << std::endl << std::endl;
+    std::cout << "Example: " << std::endl;
+    std::cout << "\tS4UWhoami [-s <kdc_address>] [-u <user_name>] [-d <user_domain>] [-c <file_with_user_cert>]" << std::endl << std::endl;
+    std::cout << "kdc_address: IP address or DNS for Kerberos KDC for send requests to" << std::endl;
 }
 //***************************************************************************************
 int wmain(int argc, wchar_t* argv[])
@@ -245,23 +332,116 @@ int wmain(int argc, wchar_t* argv[])
 
     std::unique_ptr<void, decltype([](void* value){ delete[] value; CoUninitialize(); }) > com_guard{ reinterpret_cast<void*>(new char[1]{}) };
 
-    if(argc == 2)
+    if(argc == 1)
     {
-        try
-        {
-            whoami(argv[1]);
-        }
-        catch(std::exception ex)
-        {
-            std::cout << ex.what() << std::endl;
-        }
-        catch(...)
-        {
-            std::cout << "UNKNOWN ERROR DURING EXECUTION" << std::endl;
-        }
+        usage();
+        return 0;
     }
-    else
-        std::cout << "Please provide name for user/device in domain";
+
+    int count = 1;
+
+    std::optional<std::wstring> server_name = std::nullopt;
+    parameters params;
+
+    do
+    {
+        std::wstring param = argv[count];
+
+        if(param == L"-u")
+        {
+            count++;
+            if(count > argc)
+            {
+                usage();
+                return 0;
+            }
+
+            params.user_name = argv[count];
+        }
+        else
+        {
+            if(param == L"-d")
+            {
+                count++;
+                if(count > argc)
+                {
+                    usage();
+                    return 0;
+                }
+
+                params.domain_name = argv[count];
+            }
+            else
+            {
+                if(param == L"-c")
+                {
+                    count++;
+                    if(count > argc)
+                    {
+                        usage();
+                        return 0;
+                    }
+
+                    params.file_name = argv[count];
+                }
+                else
+                {
+                    if(param == L"-s")
+                    {
+                        count++;
+                        if(count > argc)
+                        {
+                            usage();
+                            return 0;
+                        }
+
+                        server_name = argv[count];
+                    }
+                    else
+                    {
+                        usage();
+                        return 0;
+                    }
+                }
+            }
+        }
+    } while(++count < argc);
+
+    try
+    {
+        if(server_name != std::nullopt)
+        {
+            if(params.domain_name == std::nullopt)
+            {
+                std::cout << "You need to provide domain name (-d) if you would like to pin Kerberos KDC" << std::endl;
+                return 0;
+            }
+
+            XKERB::XCallAuthenticationPackage<KerbPinKdcMessage>({
+                .Realm = params.domain_name.value(),
+                .KdcAddress = server_name.value()
+            });
+        }
+
+        if((params.user_name == std::nullopt) && (params.file_name == std::nullopt))
+        {
+            std::cout << "You need to provie either <user_name> or <file_name>" << std::endl;
+            return 0;
+        }
+
+        whoami_x509(params);
+    }
+    catch(std::exception ex)
+    {
+        std::cout << ex.what() << std::endl;
+    }
+    catch(...)
+    {
+        std::cout << "UNKNOWN ERROR DURING EXECUTION" << std::endl;
+    }
+
+    if(server_name != std::nullopt)
+        XKERB::XCallAuthenticationPackage<KerbUnpinAllKdcsMessage>({});
 
     return 0;
 }

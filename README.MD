@@ -1,10 +1,21 @@
 # Basic Information
-The project _S4Uwhoami_ is a simple project which intended to show a way how to use S4U2Self in Windows for gathering information about any user, machine or service in the domain. In order to do this the only function needed is _LsaLogonUser_.
+The project _S4Uwhoami_ is a simple project which intended to show a way how to use S4U2Self in Windows for gathering information about any user, machine or service in the domain. In order to do this the only function needed is _LsaLogonUser_. The new version allows to get ticket using X.509 certificate as well as simple users/service name.
+
+# Usage
+```cpp
+void usage()
+{
+    std::cout << "S4UWhoami (c) 2024-2025, Yury Strozhevsky" << std::endl << std::endl;
+    std::cout << "Example: " << std::endl;
+    std::cout << "\tS4UWhoami [-s <kdc_address>] [-u <user_name>] [-d <user_domain>] [-c <file_with_user_cert>]" << std::endl << std::endl;
+    std::cout << "kdc_address: IP address or DNS for Kerberos KDC for send requests to" << std::endl;
+}
+```
 
 # How To Use
 Just enter name of a any user, computer (without $ at the end) or service.
 ```console
-C:\> S4Uwhoami.exe Administrator
+C:\> S4Uwhoami.exe -u Administrator
 
 User:
 =====
@@ -60,7 +71,7 @@ SeDelegateSessionUserImpersonatePrivilege Obtain an impersonation token for anot
 
 How to request data for service name:
 ```console
-C:> S4Uwhoami.exe ldap/wserver.wdomain.lan
+C:> S4Uwhoami.exe -u ldap/wserver.wdomain.lan
 
 User:
 =====
@@ -88,13 +99,43 @@ SeChangeNotifyPrivilege       Bypass traverse checking
 SeUndockPrivilege             Remove computer from docking station
 SeIncreaseWorkingSetPrivilege Increase a process working set
 SeTimeZonePrivilege           Change the time zone
-UNKNOWN ERROR DURING EXECUTION
+```
 
+How to request data for X.509 certificate
+```console
+C:> S4Uwhoami.exe -c wserver$.cer
+
+User:
+=====
+WDOMAIN\WSERVER$	S-1-5-21-4188712652-911564600-2864056775-1000
+
+Groups:
+=======
+WDOMAIN\Domain Controllers                     S-1-5-21-4188712652-911564600-2864056775-516
+Everyone                                       S-1-1-0
+BUILTIN\Users                                  S-1-5-32-545
+NT AUTHORITY\NETWORK                           S-1-5-2
+NT AUTHORITY\Authenticated Users               S-1-5-11
+NT AUTHORITY\This Organization                 S-1-5-15
+NT AUTHORITY\LogonSessionId_0_15593971         S-1-5-5-0-15593971
+NT AUTHORITY\ENTERPRISE DOMAIN CONTROLLERS     S-1-5-9
+Service asserted identity                      S-1-18-2
+WDOMAIN\Denied RODC Password Replication Group S-1-5-21-4188712652-911564600-2864056775-572
+WDOMAIN\Cert Publishers                        S-1-5-21-4188712652-911564600-2864056775-517
+Mandatory Label\Medium Plus Mandatory Level    S-1-16-8448
+
+Privileges:
+===========
+SeShutdownPrivilege           Shut down the system
+SeChangeNotifyPrivilege       Bypass traverse checking
+SeUndockPrivilege             Remove computer from docking station
+SeIncreaseWorkingSetPrivilege Increase a process working set
+SeTimeZonePrivilege           Change the time zone
 ```
 Also as a result in the current directory will be new file with name "<user_name>_token.xml". The format of the file is defined in my [**other project**](https://github.com/YuryStrozhevsky/XSEC).
 
 # License
-(c) 2024, Yury Strozhevsky
+(c) 2024-2025, Yury Strozhevsky
 [yury@strozhevsky.com](mailto:yury@strozhevsky.com)
 
 Anyone allowed to do whatever he/she want with the code.
